@@ -146,3 +146,19 @@ button:disabled { opacity: .6; cursor: wait; }
 /* Application version and copyright. */
 .site-footer { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 20px 0 28px; border-top: 1px solid #293a4e; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 24px; color: #91a6c0; font-size: .8rem; line-height: 1.6; }
 .app-version { display: inline-block; margin-left: 6px; color: #72d9c8; }
+
+.heart-box {
+  display: inline-flex;width: 1.2em;height: 1.2em;align-items: center;justify-content: center;vertical-align: -0.1em;padding-left:6px;
+}
+
+.heart {
+  display: inline-block;line-height: 1;transform-origin: center center;animation: heartbeat 1.2s ease-in-out infinite;
+}
+
+@keyframes heartbeat {
+  0%, 100% { transform: scale(1.2); }
+  15%      { transform: scale(1.15); }
+  30%      { transform: scale(1.2); }
+  45%      { transform: scale(1.35); }
+  60%      { transform: scale(1.15); }
+}
