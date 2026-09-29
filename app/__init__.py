@@ -1,0 +1,1 @@
+"""Convention Badge Generator application."""

@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Convention Badge Generator</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">LOCAL-FIRST PRINT WORKFLOW</p>
+        <h1>Convention Badge Generator</h1>
+        <p class="lede">Import attendee data and an avatar folder, then export CMYK badge files directly from this local browser app.</p>
+      </header>
+
+      <!-- Tier Backgrounds: cards are populated by renderTemplates() in app.js. -->
+      <section class="card" aria-labelledby="template-heading">
+        <div class="section-heading"><div><p class="eyebrow">STEP 1</p><h2 id="template-heading">Tier Backgrounds</h2></div></div>
+        <p class="hint">Each card is one Tier. Upload a JPG/JPEG/PNG background inside that Tier's card; it updates only that Tier and keeps its existing Avatar, text, Ticket ID, and QR layout. Image dimensions define the new Badge size at embedded PPI or 300 PPI.</p>
+        <div class="format-actions"><button id="download-format-json" type="button" class="secondary">Download all formats JSON</button><form id="load-format-form" class="inline-form"><label>Load formats JSON<input id="saved-format" type="file" accept=".json,application/json"></label><button type="submit" class="secondary">Load formats</button></form></div>
+        <div id="template-list" class="template-list"></div>
+        <form id="add-tier-form" class="inline-form">
+          <label>New Tier name<input id="new-tier-name" type="text" placeholder="eg. VIP" required></label>
+          <label>Initial background<input id="new-tier-artwork" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" required></label>
+          <label class="check"><input id="new-tier-avatar" type="checkbox"> This Tier has an avatar</label>
+          <button type="submit">Add Tier</button>
+        </form>
+      </section>
+
+      <!-- Import event data: #import-form uploads the spreadsheet and optional avatars. -->
+      <section class="card" aria-labelledby="import-heading">
+        <div class="section-heading"><div><p class="eyebrow">STEP 2</p><h2 id="import-heading">Import event data <button id="open-import-help" class="info-button" type="button" aria-label="How to import event data" aria-haspopup="dialog" aria-controls="import-help" title="How to import event data">i</button></h2></div></div>
+        <p class="import-example"><a href="/example-attendees.csv" download="example-attendees.csv">Download example CSV</a> · <a href="/example-attendees.xlsx" download="example-attendees.xlsx">Download example XLSX</a></p>
+        <form id="import-form">
+          <label>Attendee CSV / XLSX<input id="csv-file" aria-describedby="import-file-error" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required></label>
+          <label>Avatar folder <span class="optional">optional</span><input id="avatar-files" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" webkitdirectory multiple></label>
+          <button type="submit">Import event</button>
+        </form>
+        <p id="import-file-error" class="file-error hidden" role="alert"></p>
+        <p class="hint">CSV and XLSX files use the same columns; no avatar column is needed. A ticket such as <code>S-002</code> automatically uses a matching <code>S-002.png</code>, <code>S-002.jpg</code>, or <code>S-002.jpeg</code> from the selected folder.</p>
+      </section>
+
+      <!-- Batch export controls appear after import; exportBadges() handles both formats. -->
+      <section id="export-section" class="card hidden" aria-labelledby="export-heading">
+        <div class="section-heading"><div><p class="eyebrow">STEP 3</p><h2 id="export-heading">Export for print</h2></div></div>
+        <p id="imported-count" class="hint"></p>
+        <div id="missing-avatars" class="avatar-warning hidden" aria-labelledby="missing-avatar-heading">
+          <h3 id="missing-avatar-heading">Missing avatars</h3>
+          <p id="missing-avatar-count" role="status" aria-live="polite"></p>
+          <p class="hint">These badges belong to Tiers with avatars enabled. Add a matching PNG or JPEG named after each Ticket ID to your avatar folder, then re-import the spreadsheet and folder. You can still preview and export; missing avatars leave an empty area.</p>
+          <button id="download-missing-avatars" type="button" class="secondary">Download missing avatar list (CSV)</button>
+          <details open>
+            <summary>View badges with missing avatars</summary>
+            <div class="table-wrap" tabindex="0" role="region" aria-label="Badges with missing avatars">
+              <table>
+                <thead><tr><th scope="col">Ticket ID</th><th scope="col">Display name</th><th scope="col">Tier</th></tr></thead>
+                <tbody id="missing-avatar-list"></tbody>
+              </table>
+            </div>
+          </details>
+        </div>
+        <form id="export-form" class="inline-form">
+          <label>Color mode<select id="export-color-mode"><option value="rgb">RGB — no ICC profile needed</option><option value="cmyk">CMYK — printer ICC profile required</option></select></label>
+          <label id="icc-profile-label" class="hidden"><span class="icc-label-heading">Printer ICC / ICM profile <span id="icc-profile-badge" class="icc-profile-badge hidden" role="status"></span></span><input id="icc-profile" aria-describedby="icc-profile-status icc-profile-help" type="file" accept=".icc,.icm,application/vnd.iccprofile"></label>
+          <div id="icc-profile-status" class="icc-notice hidden" role="status" aria-live="polite" aria-atomic="true">
+            <strong id="icc-status-title"></strong>
+            <span id="icc-status-filename" class="icc-status-filename"></span>
+            <p id="icc-status-action"></p>
+            <p id="icc-status-transfer" class="icc-status-transfer"></p>
+          </div>
+          <div class="export-actions">
+            <div class="export-action">
+              <button id="zip-export" type="submit" aria-describedby="zip-icc-note">Download JPEG + PDF ZIP</button>
+              <span id="zip-icc-note" class="export-icc-note hidden"><span class="icc-note-check" aria-hidden="true">✓</span> Uploads &amp; applies selected ICC</span>
+            </div>
+            <div class="export-action">
+              <button id="pdf-export" type="button" class="secondary" aria-describedby="pdf-icc-note">Download Master PDF</button>
+              <span id="pdf-icc-note" class="export-icc-note hidden"><span class="icc-note-check" aria-hidden="true">✓</span> Uploads &amp; applies selected ICC</span>
+            </div>
+          </div>
+        </form>
+        <div id="export-progress" class="export-progress hidden" aria-labelledby="export-progress-title">
+          <div class="export-progress-heading"><strong id="export-progress-title" role="status" aria-live="polite">Preparing export…</strong><span id="export-progress-percent"></span></div>
+          <progress id="export-progress-bar" max="100" aria-label="Export progress"></progress>
+          <p id="export-progress-count" class="hint"></p>
+          <p id="export-progress-time" class="hint"></p>
+          <p id="export-progress-note">Your export is running. Please keep this page open; there is no need to click again.</p>
+          <p id="export-progress-error" class="file-error hidden" role="alert"></p>
+          <button id="stop-export" type="button" class="secondary hidden" aria-describedby="export-progress-note">Stop export</button>
+          <a id="export-ready-download" class="hidden" download>Download prepared file</a>
+        </div>
+        <p id="icc-profile-help" class="hint hidden">Not sure which CMYK ICC profile to choose? Use <a href="https://registry.color.org/profile-registry/PSOcoated_v3" target="_blank" rel="noopener noreferrer">PSO Coated v3 (FOGRA51)</a> as a starting choice for premium coated paper offset printing. Download the <code>PSOcoated_v3.icc</code> file from that page, then select it above. If your printer specifies a different profile, use theirs.</p>
+        <p class="hint">RGB export needs no ICC profile. For CMYK, use the profile supplied by your printer. The ZIP includes one JPEG and one separate PDF per Ticket ID. Master PDF combines all badges into one file, one badge per page. PDFs are not imposed onto paper sheets.</p>
+      </section>
+
+      <section id="preview-section" class="card hidden" aria-labelledby="preview-heading">
+        <div class="section-heading"><div><p class="eyebrow">PREVIEW</p><h2 id="preview-heading">View a badge</h2></div></div>
+        <div class="inline-form">
+          <label>Badge<select id="preview-ticket"></select></label>
+          <button id="open-preview" type="button">Open preview</button>
+        </div>
+      </section>
+
+      <section class="card data-management" aria-labelledby="data-management-heading">
+        <div class="section-heading"><div><p class="eyebrow">MAINTENANCE</p><h2 id="data-management-heading">Back up or reset saved data</h2></div></div>
+        <p class="hint">Download a ZIP backup of saved layouts, Tier artwork, generated exports, and fonts. Imported attendee lists and avatars are excluded; re-import them after restoring. Save any open layout changes before backing up.</p>
+        <p class="warning">Reset permanently deletes all saved layouts and event data. Use it to start over if the app is having problems.</p>
+        <div class="maintenance-actions">
+          <button id="backup-data" type="button" class="secondary">Download backup ZIP</button>
+          <button id="open-reset-data" type="button" class="danger" aria-haspopup="dialog" aria-controls="reset-data-dialog">Reset all saved data…</button>
+        </div>
+        <p class="hint" data-maintenance-status role="status" aria-live="polite"></p>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <!-- Program Version and Copyright-->
+      <span>Convention Badge Generator <span class="app-version">v0.0.1</span></span>
+      <span>&copy; 2026 BorneoFur · Created by Rouwei Wolf · AGPL-3.0 License</span>
+    </footer>
+    <dialog id="import-error-dialog" class="import-error-dialog" aria-labelledby="import-error-title" aria-describedby="import-error-message">
+      <h2 id="import-error-title">File error</h2>
+      <p id="import-error-message"></p>
+      <button id="close-import-error" type="button" autofocus>OK</button>
+    </dialog>
+    <dialog id="import-help" class="import-help" aria-labelledby="import-help-title">
+      <button id="close-import-help" type="button" class="close" aria-label="Close import instructions" autofocus>×</button>
+      <h2 id="import-help-title">How to import event data</h2>
+      <ol>
+        <li><a href="/example-attendees.csv" download="example-attendees.csv">Download example CSV</a> · <a href="/example-attendees.xlsx" download="example-attendees.xlsx">Download example XLSX</a> and open it in your spreadsheet editor.</li>
+        <li>Keep the column headers and replace the example rows with your attendees. Save as <strong>CSV UTF-8 (comma-delimited)</strong> or <strong>Excel (.xlsx)</strong>.</li>
+        <li>Ensure each <code>tier</code> matches a Tier in <strong>Tier Backgrounds</strong>. Add any new Tiers there before importing.</li>
+        <li>Select your file under <strong>Attendee CSV / XLSX</strong>. Optionally select an <strong>Avatar folder</strong>, then click <strong>Import event</strong>.</li>
+        <li>Use <strong>View a badge</strong> to check the result. Export directly in RGB, or select CMYK and a printer ICC / ICM profile under <strong>Export for print</strong>.</li>
+      </ol>
+      <p>For XLSX, put the headers in the first row of the <strong>first worksheet</strong>. Only that worksheet is imported. Use plain values rather than formulas, and format ticket IDs and barcode content as <strong>Text</strong> before entering them to preserve leading zeros and long numbers.</p>
+      <p>For Google Sheets, choose <strong>File → Download → Microsoft Excel (.xlsx)</strong>, then upload the downloaded file here.</p>
+      <h3>CSV / XLSX columns</h3>
+      <dl>
+        <dt><code>number</code> — optional</dt><dd>Row number. If omitted or empty, it is filled automatically.</dd>
+        <dt><code>ticket_id</code> — required</dt><dd>A unique ticket ID for each attendee, such as <code>S-002</code>. Keep IDs as text to preserve leading zeros.</dd>
+        <dt><code>display_name</code> — required</dt><dd>The name printed on the badge.</dd>
+        <dt><code>tier</code> — required</dt><dd>The matching Tier name, such as <code>Attendees</code>, <code>Sponsors</code>, or <code>Super Sponsors</code>.</dd>
+        <dt><code>qr_token</code> — required</dt><dd>The content encoded in QR Code, Data Matrix, or Aztec. Keep this column name for every barcode type. Example tokens are placeholders; replace them with your own values.</dd>
+      </dl>
+      <h3>Optional avatars</h3>
+      <p>Name each image after its ticket ID: <code>S-002.png</code>, <code>S-002.jpg</code>, or <code>S-002.jpeg</code>. Keep only one matching image per ticket ID. Do not add image paths to the spreadsheet.</p>
+      <p>Missing avatars leave the avatar area transparent. Images only appear on Tiers with avatars enabled.</p>
+    </dialog>
+    <!-- Full saved badge preview and single-ticket downloads. -->
+    <dialog id="preview-dialog" aria-labelledby="preview-title">
+      <button id="close-preview" class="close" aria-label="Close preview">×</button>
+      <img id="preview-image" alt="Badge preview">
+      <p id="preview-title"></p>
+      <label>Download color profile
+        <select id="preview-color-mode" aria-describedby="preview-download-mode">
+          <option value="srgb">sRGB — no printer profile</option>
+          <option id="preview-icc-option" value="icc" disabled>CMYK — no ICC profile selected</option>
+        </select>
+      </label>
+      <p id="preview-download-mode" class="hint" aria-live="polite"></p>
+      <div class="preview-downloads">
+        <button id="preview-download-jpg" type="button">Download JPG</button>
+        <button id="preview-download-pdf" type="button">Download PDF</button>
+      </div>
+      <p id="preview-download-error" class="file-error hidden" role="alert"></p>
+    </dialog>
+    <!-- Layout editor: IDs below connect controls to app.js; geometry stays in editor.manifest. -->
+    <dialog id="layout-editor" class="layout-editor">
+      <div class="editor-header">
+        <h2 id="editor-title">Tier layout</h2>
+        <div class="editor-header-actions">
+          <span id="layout-save-status" role="status" aria-live="polite"></span>
+          <button id="save-layout" type="button" title="Save layout (Ctrl/Cmd+S)">Save layout</button>
+          <button id="close-editor" type="button" class="close" aria-label="Close editor">×</button>
+        </div>
+        <p class="hint editor-shortcuts">Save: Ctrl/Cmd+S · Undo: Ctrl/Cmd+Z · Redo: Ctrl/Cmd+Shift+Z / Ctrl+Y. In text fields, undo and redo edit the current field.</p>
+      </div>
+      <div class="editor-grid">
+        <div id="editor-stage"><img id="editor-background" alt="Template background"><div id="editor-layers" aria-hidden="true"></div><div id="editor-overlay"></div></div>
+        <aside>
+          <div class="editor-toolbar"><button id="undo-layout" type="button" class="secondary" title="Undo (Ctrl/Cmd+Z)">Undo</button><button id="redo-layout" type="button" class="secondary" title="Redo (Ctrl/Cmd+Shift+Z or Ctrl+Y)">Redo</button><label class="check"><input id="snap-layout" type="checkbox" checked> Snap</label></div>
+          <h3>Layers</h3><div id="editor-elements" class="editor-elements"></div>
+          <div class="layer-actions"><button id="layer-backward" type="button" class="secondary">Move back</button><button id="layer-forward" type="button" class="secondary">Move forward</button></div>
+          <!-- Custom layers carry a name; literal text is separate from attendee field bindings. -->
+          <details class="add-layer-panel">
+            <summary>Add artwork layer</summary>
+            <label>Artwork layer name<input id="artwork-layer-name" type="text" maxlength="120" placeholder="Optional — defaults to filename"></label>
+            <label>Artwork image<input id="artwork-file" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png"></label>
+            <button id="add-artwork" type="button" class="secondary">Upload artwork</button>
+          </details>
+          <details class="add-layer-panel">
+            <summary>Add text layer</summary>
+            <label>Text layer name<input id="new-text-name" type="text" maxlength="120" placeholder="e.g. Event title"></label>
+            <label>Custom text<textarea id="new-text-content" rows="3" maxlength="8192" placeholder="Text printed on every badge in this Tier"></textarea></label>
+            <button id="add-text-layer" type="button" class="secondary">Add text layer</button>
+          </details>
+          <h3>Properties</h3>
+          <div id="editor-properties" class="properties">
+            <label id="layer-name-property" class="hidden">Layer name<input id="prop-layer-name" data-property="name" type="text" maxlength="120"></label>
+            <label id="custom-text-property" class="hidden">Text content<textarea id="prop-text-content" data-property="text" rows="3" maxlength="8192"></textarea></label>
+            <label>X mm<input id="prop-x" data-property="x_mm" type="number" step="0.1"></label><label>Y mm<input id="prop-y" data-property="y_mm" type="number" step="0.1"></label>
+            <label>Width mm<input id="prop-w" data-property="width_mm" type="number" step="0.1"></label><label>Height mm<input id="prop-h" data-property="height_mm" type="number" step="0.1"></label>
+            <label>Rotation °<input id="prop-rotation" data-property="rotation_degrees" type="number" step="1"></label><label class="check"><input id="prop-visible" data-property="visible" type="checkbox"> Visible</label>
+            <div id="artwork-properties" class="property-group hidden">
+              <label class="check"><input id="prop-lock-aspect" data-property="lock_aspect_ratio" type="checkbox"> Lock aspect ratio</label>
+              <label class="check" title="Snap to canvas edges while moving or resizing. Requires Snap in the editor toolbar; turn off for free movement and resizing."><input id="prop-snap-edges" data-property="snap_to_edges" type="checkbox"> Snap to edges</label>
+            </div>
+            <div id="text-properties" class="property-group">
+              <label>Color<input id="prop-color" data-property="color" type="color"></label><label>Font size pt<input id="prop-font" data-property="font_size_pt" type="number" step="1"></label>
+              <label>Min font pt<input id="prop-min-font" data-property="min_font_size_pt" type="number" step="1"></label><label>Max lines<input id="prop-max-lines" data-property="max_lines" type="number" min="1" step="1"></label>
+              <label>Font family<select id="prop-font-family" data-property="font_family"></select></label><label>Language / Han glyphs<select id="prop-font-language" data-property="font_language"><option value="auto">Automatic</option><option value="zh-Hans">Simplified Chinese</option><option value="zh-Hant">Traditional Chinese</option><option value="ja">Japanese</option><option value="ko">Korean</option></select></label><label>Style<select id="prop-font-style" data-property="font_style"><option value="regular">Regular</option><option value="bold">Bold</option><option value="italic">Italic</option><option value="bold_italic">Bold Italic</option></select></label>
+              <label>Horizontal<select id="prop-align" data-property="align"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label><label>Vertical<select id="prop-vertical-align" data-property="vertical_align"><option value="top">Top</option><option value="middle">Middle</option><option value="bottom">Bottom</option></select></label>
+              <label>Letter spacing pt<input id="prop-letter-spacing" data-property="letter_spacing_pt" type="number" step="0.1"></label><label>Line spacing pt<input id="prop-line-spacing" data-property="line_spacing_pt" type="number" step="0.1"></label>
+            </div>
+            <div id="avatar-properties" class="property-group">
+              <label>Fit<select id="prop-fit" data-property="fit"><option value="cover">Cover</option><option value="contain">Contain</option></select></label><label>Image scale<input id="prop-scale" data-property="scale" type="number" min="0.01" step="0.05"></label>
+              <label>Image X %<input id="prop-avatar-x" data-property="offset_x_pct" type="number" step="1"></label><label>Image Y %<input id="prop-avatar-y" data-property="offset_y_pct" type="number" step="1"></label>
+              <div class="mask-upload-field">
+                <div class="mask-label-heading"><label for="mask-file">Mask PNG</label><button id="open-mask-help" class="info-button" type="button" aria-label="How to use an avatar mask" aria-haspopup="dialog" aria-controls="mask-help" title="How to use an avatar mask">i</button></div>
+                <input id="mask-file" type="file" accept=".png,image/png">
+              </div><button id="upload-mask" type="button" class="secondary">Upload mask</button>
+              <span id="mask-status" class="hint" role="status"></span>
+              <button id="remove-mask" type="button" class="secondary" disabled>Remove mask</button>
+            </div>
+            <div id="qr-properties" class="property-group"><label>Barcode type<select id="prop-symbology" data-property="symbology"><option value="qr">QR Code</option><option value="data-matrix">Data Matrix</option><option value="aztec">Aztec</option></select></label><label>Foreground<input id="prop-qr-foreground" data-property="foreground_color" type="color"></label><label>Background<input id="prop-qr-background" data-property="background_color" type="color"></label><label>Quiet Zone modules<input id="prop-quiet-zone" data-property="quiet_zone_modules" type="number" min="4" max="16" step="1"></label></div>
+          </div>
+          <h3>Preview content</h3>
+          <label>Display Name<input id="preview-display-name" type="text" value="Preview Name"></label>
+          <label>Ticket ID<input id="preview-ticket-id" type="text" value="S-001"></label>
+          <label>Tier<input id="preview-tier" type="text"></label>
+          <label>Barcode content<input id="preview-qr-token" type="text" value="Preview"></label>
+          <h3>Preview avatar</h3><label>Sample / attendee<select id="editor-sample"></select></label>
+          <h3>Fonts</h3>
+          <label>Google Fonts<select id="google-font-select" disabled><option value="">Loading fonts…</option></select></label>
+          <a id="google-font-link" href="https://fonts.google.com/" target="_blank" rel="noopener noreferrer">Browse Google Fonts</a>
+          <label>Or paste a Google Fonts family link<input id="google-font-url" type="url" placeholder="https://fonts.google.com/specimen/Roboto"></label>
+          <label>Download style<select id="google-font-style"><option value="regular">Regular</option><option value="bold">Bold</option><option value="italic">Italic</option><option value="bold_italic">Bold Italic</option></select></label>
+          <p id="google-font-status" class="hint" role="status">Automatic Noto fallback covers Chinese, Japanese, Korean and Latin. First use needs internet; downloaded fonts are cached.</p>
+          <div class="editor-toolbar"><button id="use-google-font" type="button" class="secondary" disabled>Download &amp; use font</button><button id="refresh-google-fonts" type="button" class="secondary">Reload list</button></div>
+          <p class="hint">Select a text layer first. Downloads use OFL-licensed Google Fonts and include the license in template exports. Save layout to keep your selection.</p>
+          <details><summary>Upload a font file instead</summary><label>Family name<input id="font-family-name" type="text" placeholder="eg. Noto Sans"></label><label>Style<select id="font-upload-style"><option value="regular">Regular</option><option value="bold">Bold</option><option value="italic">Italic</option><option value="bold_italic">Bold Italic</option></select></label><label>TTF / OTF<input id="font-file" type="file" accept=".ttf,.otf,font/ttf,font/otf"></label><p class="hint">Uploaded fonts are included when exporting templates. Use files you have permission to share.</p><button id="upload-font" type="button" class="secondary">Upload font</button></details>
+        </aside>
+      </div>
+    </dialog>
+    <!-- Mask help is separate from the editor so it opens above the active layout dialog. -->
+    <dialog id="mask-help" class="import-help" aria-labelledby="mask-help-title">
+      <button id="close-mask-help" type="button" class="close" aria-label="Close mask instructions" autofocus>×</button>
+      <h2 id="mask-help-title">How to use an avatar mask</h2>
+      <p>A mask controls which parts of the avatar are visible. Use it to crop an avatar into a circle, a rounded shape, or a custom outline.</p>
+      <h3>Prepare your PNG</h3>
+      <ul>
+        <li><strong>PNG with transparency:</strong> opaque areas show the avatar; transparent areas hide it. Partly transparent areas create soft edges. The mask's color does not matter.</li>
+        <li><strong>PNG without transparency:</strong> white shows the avatar, black hides it, and gray makes it partly visible.</li>
+      </ul>
+      <p>If your PNG has an alpha (transparency) channel, the app uses that channel. An opaque black area will still show the avatar. For a black-and-white mask, export a grayscale PNG without an alpha channel.</p>
+      <h3>Example: a circular avatar</h3>
+      <p>Create a square PNG with a solid circle in the middle and a transparent background. Keep the avatar frame square so the circle stays round.</p>
+      <h3>Apply the mask</h3>
+      <ol>
+        <li>Select the <strong>Avatar</strong> layer in <strong>Layers</strong>.</li>
+        <li>Choose your PNG under <strong>Mask PNG</strong>, then click <strong>Upload mask</strong>.</li>
+        <li>Adjust <strong>Fit</strong>, <strong>Image scale</strong>, and <strong>Image X / Y %</strong> to position the avatar.</li>
+        <li>Click <strong>Save layout</strong>, then check the result in <strong>View a badge</strong>.</li>
+      </ol>
+      <p>The mask is stretched to the avatar frame, so use a matching aspect ratio. It applies to avatars in this Tier and does not change the original image files. Upload another mask to replace it, or click <strong>Remove mask</strong> to restore the unmasked avatar. You can Undo the change; click Save layout to keep it.</p>
+    </dialog>
+    <!-- Shared close confirmation for X and Escape; handled by requestEditorClose(). -->
+    <dialog id="unsaved-layout-dialog" aria-labelledby="unsaved-layout-title" aria-describedby="unsaved-layout-description">
+      <h2 id="unsaved-layout-title">Save layout changes?</h2>
+      <p id="unsaved-layout-description">Your layout has unsaved changes. Save them before closing?</p>
+      <div class="unsaved-layout-actions">
+        <button id="keep-editing-layout" type="button" class="secondary" autofocus>Keep editing</button>
+        <button id="discard-layout" type="button" class="danger">Discard changes</button>
+        <button id="save-close-layout" type="button">Save and close</button>
+      </div>
+    </dialog>
+    <dialog id="tier-settings" class="settings-dialog">
+      <button id="close-tier-settings" class="close" aria-label="Close Tier settings">×</button>
+      <h2>Edit Tier</h2>
+      <form id="tier-settings-form">
+        <label>Tier name<input id="tier-settings-name" type="text" maxlength="120" required></label>
+        <label class="check"><input id="tier-settings-avatar" type="checkbox"> This Tier has an avatar</label>
+        <button type="submit">Save Tier</button>
+      </form>
+      <p class="hint">Turning on avatars adds a default movable Avatar slot. Turning them off removes the Avatar slot from this layout.</p>
+    </dialog>
+    <dialog id="reset-data-dialog" class="reset-data-dialog" aria-labelledby="reset-data-title" aria-describedby="reset-data-warning">
+      <h2 id="reset-data-title">Permanently delete all saved data?</h2>
+      <div id="reset-data-warning" class="reset-warning">
+        <p><strong>All your saved layouts will be deleted.</strong> This also deletes:</p>
+        <ul>
+          <li>Custom Tiers, backgrounds, artwork, and avatar masks</li>
+          <li>Imported attendee lists and avatars</li>
+          <li>Generated badges, export files, uploaded fonts, and font caches</li>
+        </ul>
+        <p>This cannot be undone in the app. The built-in starter Tiers will be available after reset.</p>
+      </div>
+      <div class="reset-scope">
+        <p>Data directory: <code id="reset-data-path"></code></p>
+        <p>App folders currently scheduled for deletion: <code id="reset-data-entries"></code></p>
+        <p>Other entries that will be kept: <code id="reset-data-preserved"></code></p>
+        <p class="hint">Only app folders (templates, events, google-fonts, .uploads, .backups, and app staging folders) can be deleted. Files inside these folders will be deleted too; keep unrelated files elsewhere.</p>
+      </div>
+      <button id="backup-before-reset" type="button" class="secondary">Download backup ZIP first</button>
+      <p class="hint">This backup excludes imported attendee lists and avatars. Reset still deletes them, so keep your original spreadsheet and avatar folder for re-import. Generated badge exports remain in the backup.</p>
+      <p class="hint">Wait for your browser to finish saving the backup before deleting. ZIP backups are restored manually; layout-only JSON backups can be loaded under Tier Backgrounds.</p>
+      <p class="hint" data-maintenance-status role="status" aria-live="polite"></p>
+      <form id="reset-data-form">
+        <label>Type DELETE to confirm<input id="reset-data-confirmation" type="text" autocomplete="off" spellcheck="false" maxlength="6" aria-describedby="reset-data-warning" required></label>
+        <div class="maintenance-actions">
+          <button id="cancel-reset-data" type="button" class="secondary" autofocus>Cancel</button>
+          <button id="confirm-reset-data" type="submit" class="danger" disabled>Delete all saved data</button>
+        </div>
+      </form>
+    </dialog>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+# Send only application, dependency, and test inputs to the Docker builder.
+**
+!Dockerfile
+!requirements.txt
+!app/
+!app/**
+!tests/
+!tests/**
+**/__pycache__/
+**/*.py[cod]
+**/.DS_Store

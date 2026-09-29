@@ -1,0 +1,4 @@
+number,ticket_id,display_name,tier,qr_token
+1,A-001,Bob,Attendees,example-token-1
+2,S-002,Alice,Sponsors,example-token-2
+3,SS-003,Charlie,Super Sponsors,example-token-3

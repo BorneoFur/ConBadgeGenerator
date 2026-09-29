@@ -1,0 +1,14 @@
+{
+  "id": "attendees",
+  "name": "Attendees",
+  "version": "1.0.0",
+  "priority": -100,
+  "profile_picture": false,
+  "print": {"width_mm": 90, "height_mm": 125, "bleed_mm": 3, "safe_mm": 5, "ppi": 300},
+  "background": {"color": "#1d2a44"},
+  "elements": [
+    {"type": "text", "field": "display_name", "x_mm": 10, "y_mm": 73, "width_mm": 70, "height_mm": 18, "font_size_pt": 24, "min_font_size_pt": 11, "align": "center", "color": "#ffffff"},
+    {"type": "text", "field": "ticket_id", "x_mm": 10, "y_mm": 95, "width_mm": 70, "height_mm": 8, "font_size_pt": 12, "min_font_size_pt": 9, "align": "center", "color": "#b7d8ff"},
+    {"type": "qr", "field": "qr_token", "x_mm": 66, "y_mm": 105, "width_mm": 15, "height_mm": 15, "quiet_zone_modules": 4}
+  ]
+}

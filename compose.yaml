@@ -1,0 +1,38 @@
+name: conbadgegenerator
+
+services:
+  badge:
+    build:
+      context: .
+      target: runtime
+    ports:
+      - "127.0.0.1:${BADGE_PORT:-8000}:8000"
+    user: "10001:10001"
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    volumes:
+      - badge-data:/data
+    cpus: 2.0
+    mem_limit: 2g
+    memswap_limit: 2g
+    pids_limit: 128
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: "no"
+    stop_grace_period: 30s
+
+volumes:
+  badge-data:

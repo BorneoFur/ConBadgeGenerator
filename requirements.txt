@@ -1,0 +1,13 @@
+fastapi>=0.115,<=0.141.1
+uvicorn[standard]>=0.30,<=0.52
+python-multipart==0.0.32
+Pillow==12.3.0
+qrcode[pil]==8.2
+zxing-cpp==3.1.1
+reportlab==4.5.1
+
+openpyxl==3.1.5
+fonttools==4.62.1
+uharfbuzz==0.56.0
+freetype-py==2.5.1
+regex==2026.6.28
