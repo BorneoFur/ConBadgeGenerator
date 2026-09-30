@@ -208,6 +208,7 @@ use cached Google fonts, downloading them on first use. Unsupported characters r
 an error. Text is NFC-normalized and shaped as runs, preserving combining marks.
 
 Each font family may include `origins`, keyed by style. Google origins include
-`source: "google-fonts"`, `license: "OFL-1.1"`, `url`, `download_url`, `sha256`, and
+`source: "google-fonts"`, `license` (`"OFL-1.1"`, `"Apache-2.0"`, or `"Ubuntu-font-1.0"`),
+`url`, `download_url`, `sha256`, optional `style` (the applied style), and
 `license_asset`. Upload origins use `source: "upload"`. Template JSON exports retain
 all font/license assets; users are responsible for permission to redistribute uploads.

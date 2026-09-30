@@ -12,7 +12,7 @@
 | [app/http_security.py](../app/http_security.py) | Request size limits before multipart parsing and response headers | `UploadLimitsMiddleware` |
 | [app/services.py](../app/services.py) | Template persistence, attendee validation, rendering, and exports | `create_event`, `save_template_layout`, `_text_layer`, `render_badge` |
 | [app/export_jobs.py](../app/export_jobs.py) | Background batch exports and progress | `start`, `active`, `get`, `download` |
-| [app/google_fonts.py](../app/google_fonts.py) | Official OFL downloads and local cache | `ensure_font`, `family_id` |
+| [app/google_fonts.py](../app/google_fonts.py) | Official OFL/Apache/UFL downloads and local cache | `ensure_font`, `family_id` |
 | [app/typography.py](../app/typography.py) | Unicode fallback, shaping and rasterization | `FontResolver`, `SizedFont`, `render_text` |
 
 The two main rendering functions are **`render_badge()`** for a complete badge and
@@ -88,11 +88,16 @@ render; cancellation and identity checks prevent an older response replacing a n
 ### Google and uploaded fonts
 
 `google_fonts.ensure_font()` accepts a family ID or Google Fonts specimen URL. It
-fetches metadata, an original TTF, and OFL.txt only from Google's font repository.
+fetches metadata, an original TTF, and OFL.txt, LICENSE.txt, or UFL.txt only from Google's
+font repository. It checks `ofl/`, `apache/`, then `ufl/`, trying the next directory
+only when metadata returns 404.
 The local cache serves subsequent requests without internet. `add_google_font()`
 passes the font and license to `add_template_font()`, which copies both into the
 selected template. Per-style `origins` preserve source URLs and license asset paths;
 uploaded styles are marked separately and never inherit a Google license.
+For a Regular request, families with only italic faces use Italic. The cache records
+the applied `style`, and the download API returns it so the editor selects the matching
+font asset. Explicit Italic requests still require an italic face.
 
 Font downloads/uploads happen immediately. Assignments remain in the editor draft
 until **Save layout**; undo/discard does not delete the stored asset. JSON exports
@@ -175,7 +180,7 @@ not a purely read-only operation for legacy data.
 ```sh
 .venv/bin/python -m unittest discover -s tests -v
 node --check app/static/app.js
-node --test tests/test_export_ui.cjs
+node --test tests/*.cjs
 ```
 
 `test_text_preview.py` compares editor text pixels with the corresponding region of

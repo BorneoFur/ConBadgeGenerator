@@ -530,7 +530,7 @@ def add_template_asset(template_id: str, kind: str, filename: str, content: byte
         raise
 
 
-# Uploaded and Google fonts share asset storage. Google downloads retain their OFL license.
+# Uploaded and Google fonts share asset storage. Google downloads retain their license.
 # It stores the font asset immediately; assigning it to a text layer is saved separately.
 def add_template_font(template_id: str, family_name: str, style: str, filename: str, content: bytes, *, source_info: dict | None = None, license_content: bytes | None = None) -> dict[str, Any]:
     family_name = family_name.strip()
@@ -566,7 +566,8 @@ def add_template_font(template_id: str, family_name: str, style: str, filename: 
         origins = family.setdefault("origins", {})
         origins[style] = source_info or {"source": "upload"}
         if license_content:
-            license_asset = f"fonts/{family['id']}-{style}-OFL.txt"
+            license_name = {"OFL-1.1": "OFL", "Ubuntu-font-1.0": "UFL"}.get(origins[style].get("license"), "LICENSE")
+            license_asset = f"fonts/{family['id']}-{style}-{license_name}.txt"
             security.asset_path(staging, license_asset).write_bytes(security.normalize_asset(license_asset, license_content))
             origins[style]["license_asset"] = license_asset
         manifest.update({"id": target_id, "version": now(), "priority": 100})
@@ -587,9 +588,11 @@ def add_google_font(template_id: str, value: str, style: str = "regular") -> dic
         raise BadgeError("Choose a valid font style.")
     try:
         info = google_fonts.ensure_font(value, DATA_ROOT / "google-fonts", italic="italic" in style, bold="bold" in style)
-        return add_template_font(template_id, info["name"], style, "google.ttf", info["path"].read_bytes(),
-                                 source_info={k: v for k, v in info.items() if k not in {"path", "license_path"}},
-                                 license_content=info["license_path"].read_bytes())
+        applied_style = info.get("style", style)  # Older cache entries use the requested style.
+        result = add_template_font(template_id, info["name"], applied_style, "google.ttf", info["path"].read_bytes(),
+                                   source_info={k: v for k, v in info.items() if k not in {"path", "license_path"}},
+                                   license_content=info["license_path"].read_bytes())
+        return {**result, "style": applied_style}
     except google_fonts.FontError as exc:
         raise BadgeError(str(exc)) from exc
 

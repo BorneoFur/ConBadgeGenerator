@@ -408,10 +408,13 @@ $('#use-google-font').addEventListener('click', async () => {
     editor.id = result.id;
     editor.manifest.fonts = [...(editor.manifest.fonts || []).filter((font) => font.id !== result.font.id), result.font];
     element.font_family = result.font.id;
-    element.font_style = style;
+    const appliedStyle = result.style || style;
+    element.font_style = appliedStyle;
+    $('#google-font-style').value = appliedStyle;
     clearTextPreviews();
     rememberEditor();
-    toast('Google font downloaded and applied. Save layout to keep this selection.');
+    toast(appliedStyle === style ? 'Google font downloaded and applied. Save layout to keep this selection.'
+      : 'This font only provides Italic; applied it. Save layout to keep this selection.');
   } catch (error) {
     toast(error.message, true);
   } finally {

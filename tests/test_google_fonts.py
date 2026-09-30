@@ -1,12 +1,16 @@
 """Offline tests for official downloads, fallback coverage, and portable licenses."""
+import asyncio
 import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.error import HTTPError, URLError
 
 from app import google_fonts, services, typography
 from font_fixtures import sample_font
+from test_upload_security import asgi_request
 
 
 class GoogleFontTests(unittest.TestCase):
@@ -18,6 +22,24 @@ class GoogleFontTests(unittest.TestCase):
         sample_font('Example', characters='A é字简繁한あ').save(stream)
         self.content = stream.getvalue()
         self.license = b'Copyright Example\nSIL OPEN FONT LICENSE Version 1.1'
+        self.apache_license = b'Apache License\nVersion 2.0, January 2004'
+        self.ufl_license = b'UBUNTU FONT LICENCE Version 1.0'
+        self.ubuntu_styles = {'regular': 'Regular', 'bold': 'Bold', 'italic': 'Italic', 'bold_italic': 'BoldItalic'}
+        self.ubuntu_metadata = ('name: "Ubuntu"\nlicense: "UFL"\n' + ''.join(
+            'fonts {\n'
+            f'  style: "{"italic" if "italic" in style else "normal"}"\n'
+            f'  weight: {700 if "bold" in style else 400}\n'
+            f'  filename: "Ubuntu-{suffix}.ttf"\n'
+            '}\n' for style, suffix in self.ubuntu_styles.items()
+        )).encode()
+        self.chewy_metadata = b'''name: "Chewy"
+license: "APACHE2"
+fonts {
+  style: "normal"
+  weight: 400
+  filename: "Chewy-Regular.ttf"
+}
+'''
         self.metadata = b'''name: "Example"
 license: "OFL"
 fonts {
@@ -39,15 +61,172 @@ fonts {
             return self.license
         return self.content
 
+    def open_chewy(self, request, timeout):
+        files = {
+            'apache/chewy/METADATA.pb': self.chewy_metadata,
+            'apache/chewy/Chewy-Regular.ttf': self.content,
+            'apache/chewy/LICENSE.txt': self.apache_license,
+        }
+        relative = request.full_url.removeprefix('https://raw.githubusercontent.com/google/fonts/main/')
+        if relative not in files:
+            raise HTTPError(request.full_url, 404, 'Not Found', {}, None)
+        return io.BytesIO(files[relative])
+
+    def open_ubuntu(self, request, timeout):
+        files = {
+            'ufl/ubuntu/METADATA.pb': self.ubuntu_metadata,
+            'ufl/ubuntu/UFL.txt': self.ufl_license,
+            **{f'ufl/ubuntu/Ubuntu-{suffix}.ttf': self.content for suffix in self.ubuntu_styles.values()},
+        }
+        relative = request.full_url.removeprefix('https://raw.githubusercontent.com/google/fonts/main/')
+        if relative not in files:
+            raise HTTPError(request.full_url, 404, 'Not Found', {}, None)
+        return io.BytesIO(files[relative])
+
+    def test_ubuntu_link_styles_cache_and_portable_ufl_license(self):
+        with patch.object(services, 'DATA_ROOT', self.root / 'data'), patch.object(google_fonts, 'urlopen', side_effect=self.open_ubuntu) as fetch:
+            template_id = 'attendees'
+            for style, suffix in self.ubuntu_styles.items():
+                with self.subTest(style=style):
+                    fetch.reset_mock()
+                    status, _, response = asyncio.run(asgi_request(f'/api/templates/{template_id}/google-fonts',
+                        json.dumps({'font_id': 'https://fonts.google.com/specimen/Ubuntu', 'style': style}).encode(),
+                        headers=[(b'content-type', b'application/json')]))
+                    self.assertEqual(status, 200, response)
+                    result = json.loads(response)
+                    template_id = result['id']
+                    self.assertEqual(result['font']['name'], 'Ubuntu')
+                    self.assertEqual(fetch.call_count, 5)  # Two 404s, UFL metadata, font, license.
+                    origin = result['font']['origins'][style]
+                    self.assertEqual(origin['download_url'], f'https://raw.githubusercontent.com/google/fonts/main/ufl/ubuntu/Ubuntu-{suffix}.ttf')
+                    fetch.reset_mock()
+                    info = google_fonts.ensure_font('Ubuntu', services.DATA_ROOT / 'google-fonts',
+                                                    italic='italic' in style, bold='bold' in style)
+                    fetch.assert_not_called()
+                    self.assertEqual(info['license'], 'Ubuntu-font-1.0')
+                    self.assertEqual(info['license_path'].name, 'UFL.txt')
+                    self.assertEqual(info['license_path'].read_bytes(), self.ufl_license)
+            package = services.template_set_json()
+        with patch.object(services, 'DATA_ROOT', self.root / 'restored'):
+            services.import_template_set_json(package)
+            template = services.discover_templates()[template_id]
+            font = template['manifest']['fonts'][0]
+            for style in self.ubuntu_styles:
+                with self.subTest(restored_style=style):
+                    origin = font['origins'][style]
+                    self.assertEqual(origin['license'], 'Ubuntu-font-1.0')
+                    self.assertTrue(origin['license_asset'].endswith('-UFL.txt'))
+                    self.assertEqual((template['root'] / origin['license_asset']).read_bytes(), self.ufl_license)
+                    self.assertEqual((template['root'] / font[style]).read_bytes(), self.content)
+
+    def test_ufl_license_must_be_verified_before_caching(self):
+        for content in (self.license, self.apache_license, b'UBUNTU FONT LICENCE without a version', b'not a license'):
+            with self.subTest(content=content), patch.object(self, 'ufl_license', content), patch.object(google_fonts, 'urlopen', side_effect=self.open_ubuntu):
+                with self.assertRaisesRegex(google_fonts.FontError, 'license could not be verified'):
+                    google_fonts.ensure_font('Ubuntu', self.root)
+                self.assertFalse((self.root / 'ubuntu' / 'regular.json').exists())
+
+    def test_italic_only_family_default_style_api_cache_and_export(self):
+        metadata = b'''name: "Molle"
+license: "OFL"
+fonts {
+  style: "italic"
+  weight: 400
+  filename: "Molle-Regular.ttf"
+}
+'''
+        with patch.object(services, 'DATA_ROOT', self.root / 'data'), patch.object(self, 'metadata', metadata), patch.object(google_fonts, 'download', side_effect=self.download) as fetch:
+            template_id = 'attendees'
+            # Repeat the default request to verify that the cached result also resolves to italic.
+            for requested_style in (None, 'regular', 'italic'):
+                payload = {'font_id': 'https://fonts.google.com/specimen/Molle'}
+                if requested_style:
+                    payload['style'] = requested_style
+                fetch.reset_mock()
+                status, _, response = asyncio.run(asgi_request(f'/api/templates/{template_id}/google-fonts',
+                    json.dumps(payload).encode(), headers=[(b'content-type', b'application/json')]))
+                self.assertEqual(status, 200, response)
+                result = json.loads(response)
+                template_id = result['id']
+                self.assertEqual(result['style'], 'italic')
+                self.assertNotIn('regular', result['font'])
+                self.assertIn('italic', result['font'])
+                origin = result['font']['origins']['italic']
+                self.assertEqual(origin['style'], 'italic')
+                self.assertTrue(origin['download_url'].endswith('/ofl/molle/Molle-Regular.ttf'))
+                if requested_style == 'regular':
+                    fetch.assert_not_called()
+            template = services.discover_templates()[template_id]
+            element = {'font_family': result['font']['id'], 'font_style': result['style']}
+            selected = services._font_asset(element, template['root'])
+            self.assertEqual(selected.read_bytes(), self.content)
+            self.assertIsNotNone(typography.render_text({**element, '_ppi': 72, 'width_mm': 60,
+                'height_mm': 20, 'font_size_pt': 20}, 'A', selected, services.DATA_ROOT / 'google-fonts').getbbox())
+            package = services.template_set_json()
+        with patch.object(services, 'DATA_ROOT', self.root / 'restored'):
+            services.import_template_set_json(package)
+            template = services.discover_templates()[template_id]
+            font = template['manifest']['fonts'][0]
+            self.assertEqual((template['root'] / font['italic']).read_bytes(), self.content)
+            self.assertEqual((template['root'] / font['origins']['italic']['license_asset']).read_bytes(), self.license)
+
+    def test_chewy_link_api_cache_and_portable_apache_license(self):
+        with patch.object(services, 'DATA_ROOT', self.root / 'data'), patch.object(google_fonts, 'urlopen', side_effect=self.open_chewy) as fetch:
+            status, _, response = asyncio.run(asgi_request('/api/templates/attendees/google-fonts',
+                json.dumps({'font_id': 'https://fonts.google.com/specimen/Chewy\u00a0', 'style': 'regular'}).encode(),
+                headers=[(b'content-type', b'application/json')]))
+            self.assertEqual(status, 200, response)
+            result = json.loads(response)
+            self.assertEqual(result['font']['name'], 'Chewy')
+            self.assertEqual(fetch.call_count, 4)  # OFL 404, Apache metadata, font, license.
+            info = google_fonts.ensure_font('Chewy', services.DATA_ROOT / 'google-fonts')
+            self.assertEqual(fetch.call_count, 4)
+            self.assertEqual(info['license_path'].name, 'LICENSE.txt')
+            self.assertEqual(info['license_path'].read_bytes(), self.apache_license)
+            self.assertEqual(info['download_url'], 'https://raw.githubusercontent.com/google/fonts/main/apache/chewy/Chewy-Regular.ttf')
+            package = services.template_set_json()
+        with patch.object(services, 'DATA_ROOT', self.root / 'restored'):
+            services.import_template_set_json(package)
+            template = services.discover_templates()[result['id']]
+            font = template['manifest']['fonts'][0]
+            origin = font['origins']['regular']
+            self.assertEqual(origin['license'], 'Apache-2.0')
+            self.assertTrue(origin['license_asset'].endswith('-LICENSE.txt'))
+            self.assertEqual((template['root'] / origin['license_asset']).read_bytes(), self.apache_license)
+            self.assertEqual((template['root'] / font['regular']).read_bytes(), self.content)
+
+    def test_apache_license_must_be_verified_before_caching(self):
+        for content in (self.license, b'Apache License without a version', b'not a license'):
+            with self.subTest(content=content), patch.object(self, 'apache_license', content), patch.object(google_fonts, 'urlopen', side_effect=self.open_chewy):
+                with self.assertRaisesRegex(google_fonts.FontError, 'license could not be verified'):
+                    google_fonts.ensure_font('Chewy', self.root)
+                self.assertFalse((self.root / 'chewy' / 'regular.json').exists())
+
+    def test_only_missing_metadata_tries_another_license_directory(self):
+        for error in (HTTPError('https://raw.githubusercontent.com/', 403, 'Forbidden', {}, None),
+                      HTTPError('https://raw.githubusercontent.com/', 500, 'Server Error', {}, None),
+                      URLError('offline')):
+            with self.subTest(error=error), patch.object(google_fonts, 'urlopen', side_effect=error) as fetch:
+                with self.assertRaises(google_fonts.FontError):
+                    google_fonts.ensure_font('Chewy', self.root)
+                self.assertEqual(fetch.call_count, 1)
+
+    def test_unknown_family_reports_supported_licenses(self):
+        with patch.object(google_fonts, 'urlopen', side_effect=self.open_chewy) as fetch:
+            with self.assertRaisesRegex(google_fonts.FontError, 'not found.*OFL.*Apache.*UFL'):
+                google_fonts.ensure_font('UnknownFamily', self.root)
+            self.assertEqual(fetch.call_count, 3)
+
     def test_official_link_download_cache_and_style(self):
         with patch.object(google_fonts, 'download', side_effect=self.download) as fetch:
             info = google_fonts.ensure_font('https://fonts.google.com/specimen/Example', self.root)
+            self.assertEqual(info['style'], 'regular')
             self.assertEqual(info['path'].read_bytes(), self.content)
             self.assertEqual(info['license_path'].read_bytes(), self.license)
             google_fonts.ensure_font('Example', self.root)
             self.assertEqual(fetch.call_count, 3)
-            google_fonts.ensure_font('Example', self.root, bold=True)
-            self.assertIn(('example/Example-Bold.ttf',), [call.args for call in fetch.call_args_list])
+            self.assertEqual(google_fonts.ensure_font('Example', self.root, bold=True)['style'], 'bold')
+            self.assertIn(('ofl/example/Example-Bold.ttf',), [call.args for call in fetch.call_args_list])
             with self.assertRaisesRegex(google_fonts.FontError, 'requested style'):
                 google_fonts.ensure_font('Example', self.root, italic=True)
 

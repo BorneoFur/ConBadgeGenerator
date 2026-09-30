@@ -347,10 +347,13 @@ The internal manifest format is documented in `docs/template-manifest.md`.
 
 In **Edit layout → Fonts**, select a Google font or paste a family link from
 [Google Fonts](https://fonts.google.com/), choose a style, and click **Download & use font**.
-Automatic downloads support OFL-licensed families from Google's official repository.
-Original font files, source details, and OFL licenses are included in template exports.
+Automatic downloads support families licensed under OFL, Apache 2.0, or Ubuntu Font
+Licence (UFL) from Google's official repository, including the Ubuntu family.
+Original font files, source details, and licenses are included in template exports.
 Download each static style you need; variable weight fonts also support Regular/Bold
 through their weight axis. Italic requires an italic font file when available.
+For families that only provide Italic, such as Molle, choosing Regular automatically
+downloads and applies Italic. The editor shows the applied style.
 
 **Automatic — multilingual Noto** fills missing characters using Noto Sans plus its
 SC, TC, JP and KR families. First use requires internet; downloads are cached under
