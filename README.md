@@ -247,7 +247,7 @@ restart the server, or let Uvicorn reload them when running with `--reload`.
 | Stored image size accepted by the decoder and normalization output | `MAX_STORED_IMAGE_BYTES` | Follows `MAX_BACKGROUND_BYTES` |
 | Whole upload request and total avatar bytes per import | `MAX_REQUEST_BYTES` | `4 * GIB` |
 | Template JSON file and total normalized template assets | `MAX_TEMPLATE_BYTES` | `128 * MIB` |
-| Individual font / ICC profile / spreadsheet file | `MAX_FONT_BYTES` / `MAX_PROFILE_BYTES` / `MAX_SPREADSHEET_BYTES` | `64 * MIB` / `4 * MIB` / `16 * MIB` |
+| Individual font / ICC profile / spreadsheet file | `MAX_FONT_BYTES` / `MAX_PROFILE_BYTES` / `MAX_SPREADSHEET_BYTES` | `128 * MIB` / `256 * MIB` / `64 * MIB` |
 
 For example, allowing a background file up to 4 GiB requires
 `MAX_BACKGROUND_BYTES = 4 * GIB` and a larger request allowance, such as
